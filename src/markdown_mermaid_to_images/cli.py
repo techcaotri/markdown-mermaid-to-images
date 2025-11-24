@@ -255,7 +255,7 @@ def export_mermaid_blocks(elem, doc, output):
 
         mmdc_default_installation = f"{os.path.expanduser('~')}/node_modules/.bin/mmdc"
         mmdc = "mmdc" if which("mmdc") else mmdc_default_installation
-        command = [f"{mmdc} -i input.mmd -o {output_path} {puppeteer}"]
+        command = [f"{mmdc} -i input.mmd -o {output_path} {puppeteer} --scale 1.75"]
         mermaid_output = subprocess.check_output(command, shell=True, timeout=180)
         logger.info(mermaid_output)
         os.remove("input.mmd")

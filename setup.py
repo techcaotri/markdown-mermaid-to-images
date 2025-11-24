@@ -17,7 +17,7 @@ setup(
     packages=find_packages(where="src"),
     zip_safe=False,
     include_package_data=True,
-    install_requires=["click>=7.0, <8.0", "panflute>=1.12.5, <2.0.0", "pypandoc>=1.4, <2.0"],
+    install_requires=["click>=7.0, <8.0", "panflute>=1.12.5, <2.4.0", "pypandoc>=1.4, <2.0"],
     entry_points={"console_scripts": ["markdown_mermaid_to_images = markdown_mermaid_to_images.cli:cli"]},
     classifiers=[
         "Programming Language :: Python",
