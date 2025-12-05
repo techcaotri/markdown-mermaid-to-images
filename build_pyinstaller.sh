@@ -40,5 +40,5 @@ echo
 echo "Build complete. Executable is at dist/$APP_NAME"
 
 echo "Create soft link for easy access:"
-echo "ln -s \$(pwd)/dist/$APP_NAME ~/bin/"
-ln -s "$(pwd)/dist/$APP_NAME" ~/bin/
+echo "ln -sf \$(pwd)/dist/$APP_NAME ~/bin/"
+ln -sf "$(pwd)/dist/$APP_NAME" ~/bin/
