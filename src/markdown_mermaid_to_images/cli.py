@@ -60,12 +60,31 @@ logger = logging.getLogger(__name__)
 @click.option(
     "--log-level", "-l", default="INFO", type=click.Choice(["DEBUG", "INFO", "ERROR"]), help="Log level for the script."
 )
-def cli(file, folder, ignore, output, log_level):
+@click.option(
+    "--scale",
+    "-s",
+    default=1,
+    type=int,
+    help="Scaling factor for the output images. Must be an integer. Defaults to 1.",
+)
+@click.option(
+    "--extension",
+    "-e",
+    default="png",
+    help="Extension for the output images (e.g., png, svg, pdf). Defaults to png.",
+)
+def cli(file, folder, ignore, output, log_level, scale, extension):
     """Exports mermaid diagrams in Markdown documents as images.."""
     logger.setLevel(log_level)
+    
+    # Explicit check for integer scale (redundant with click type=int, but requested)
+    if not isinstance(scale, int):
+        logger.error(f"Invalid scale value: {scale}. Scale must be an integer.")
+        sys.exit(1)
+
     markdown_files = get_markdown_file_paths(file, folder, ignore)
     install_mermaid_cli()
-    convert_markdown(markdown_files, output)
+    convert_markdown(markdown_files, output, scale, extension)
 
 
 def get_markdown_file_paths(file, folder, ignore_paths):
@@ -139,7 +158,7 @@ def install_mermaid_cli():
             sys.exit(1)
 
 
-def convert_markdown(markdown_files, output):
+def convert_markdown(markdown_files, output, scale, extension):
     """Converts markdown file's mermaid code blocks to image blocks. It does this by:
 
     * Convert the markdown file to JSON, which include various details such as styling
@@ -161,13 +180,17 @@ def convert_markdown(markdown_files, output):
     Args:
         markdown_files (:obj:`list` of :obj:`str`): List of paths of the markdown files, we will parse/convert.
         output (str): Path to the output folder where the new markdown files will be saved.
+        scale (int): Scaling factor for the mermaid output images.
+        extension (str): File extension for the output images.
 
     """
     for markdown_file in markdown_files:
         logger.info(f"Exporting {markdown_file} mermaid code blocks to images.")
         doc = convert_markdown_to_json(markdown_file)
         try:
-            doc = panflute.run_filter(export_mermaid_blocks, doc=doc, output=output)
+            doc = panflute.run_filter(
+                export_mermaid_blocks, doc=doc, output=output, scale=scale, extension=extension
+            )
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to convert mermaid code block to image. Skiping file. {e}")
             sys.exit(1)
@@ -217,7 +240,7 @@ def convert_markdown_to_json(markdown_file):
     return doc
 
 
-def export_mermaid_blocks(elem, doc, output):
+def export_mermaid_blocks(elem, doc, output, scale, extension):
     """This function is called for every element in the content list. For every element we check if it's a mermaid
     code block. If it is a mermaid code block:
 
@@ -233,6 +256,8 @@ def export_mermaid_blocks(elem, doc, output):
         doc (panflute.Doc): Pandoc document container, has a mermaid attribute, where we store code block \
             index and image path.
         output (str): Path to the output folder where the new markdown files will be saved.
+        scale (int): Scaling factor for the output image.
+        extension (str): Extension for the output image (e.g. 'png', 'svg').
 
     """
     if isinstance(elem, panflute.CodeBlock) and "mermaid" in elem.classes:
@@ -246,7 +271,8 @@ def export_mermaid_blocks(elem, doc, output):
         with open("input.mmd", "w+") as tmp:
             tmp.write(output_text)
 
-        output_name = f"{image_name}.png"
+        # Updated to use the extension variable
+        output_name = f"{image_name}.{extension}"
         output_path = os.path.join(output, output_name)
 
         puppeteer = ""
@@ -255,7 +281,7 @@ def export_mermaid_blocks(elem, doc, output):
 
         mmdc_default_installation = f"{os.path.expanduser('~')}/node_modules/.bin/mmdc"
         mmdc = "mmdc" if which("mmdc") else mmdc_default_installation
-        command = [f"{mmdc} -i input.mmd -o {output_path} {puppeteer} --scale 1.75"]
+        command = [f"{mmdc} -i input.mmd -o {output_path} {puppeteer} --scale {scale}"]
         mermaid_output = subprocess.check_output(command, shell=True, timeout=180)
         logger.info(mermaid_output)
         os.remove("input.mmd")
