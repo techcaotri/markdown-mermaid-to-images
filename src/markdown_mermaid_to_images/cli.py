@@ -73,18 +73,24 @@ logger = logging.getLogger(__name__)
     default="png",
     help="Extension for the output images (e.g., png, svg, pdf). Defaults to png.",
 )
-def cli(file, folder, ignore, output, log_level, scale, extension):
+@click.option(
+    "--imgDir",
+    "-d",
+    default=".",
+    help="Directory to save images, relative to the output folder. Defaults to current folder ('.').",
+)
+def cli(file, folder, ignore, output, log_level, scale, extension, imgdir):
     """Exports mermaid diagrams in Markdown documents as images.."""
     logger.setLevel(log_level)
-    
-    # Explicit check for integer scale (redundant with click type=int, but requested)
+
+    # Explicit check for integer scale
     if not isinstance(scale, int):
         logger.error(f"Invalid scale value: {scale}. Scale must be an integer.")
         sys.exit(1)
 
     markdown_files = get_markdown_file_paths(file, folder, ignore)
     install_mermaid_cli()
-    convert_markdown(markdown_files, output, scale, extension)
+    convert_markdown(markdown_files, output, scale, extension, imgdir)
 
 
 def get_markdown_file_paths(file, folder, ignore_paths):
@@ -158,7 +164,7 @@ def install_mermaid_cli():
             sys.exit(1)
 
 
-def convert_markdown(markdown_files, output, scale, extension):
+def convert_markdown(markdown_files, output, scale, extension, imgdir):
     """Converts markdown file's mermaid code blocks to image blocks. It does this by:
 
     * Convert the markdown file to JSON, which include various details such as styling
@@ -182,6 +188,7 @@ def convert_markdown(markdown_files, output, scale, extension):
         output (str): Path to the output folder where the new markdown files will be saved.
         scale (int): Scaling factor for the mermaid output images.
         extension (str): File extension for the output images.
+        imgdir (str): Relative path to store images inside the output directory.
 
     """
     for markdown_file in markdown_files:
@@ -189,7 +196,12 @@ def convert_markdown(markdown_files, output, scale, extension):
         doc = convert_markdown_to_json(markdown_file)
         try:
             doc = panflute.run_filter(
-                export_mermaid_blocks, doc=doc, output=output, scale=scale, extension=extension
+                export_mermaid_blocks, 
+                doc=doc, 
+                output=output, 
+                scale=scale, 
+                extension=extension, 
+                imgdir=imgdir
             )
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to convert mermaid code block to image. Skiping file. {e}")
@@ -240,7 +252,7 @@ def convert_markdown_to_json(markdown_file):
     return doc
 
 
-def export_mermaid_blocks(elem, doc, output, scale, extension):
+def export_mermaid_blocks(elem, doc, output, scale, extension, imgdir):
     """This function is called for every element in the content list. For every element we check if it's a mermaid
     code block. If it is a mermaid code block:
 
@@ -258,6 +270,7 @@ def export_mermaid_blocks(elem, doc, output, scale, extension):
         output (str): Path to the output folder where the new markdown files will be saved.
         scale (int): Scaling factor for the output image.
         extension (str): Extension for the output image (e.g. 'png', 'svg').
+        imgdir (str): Relative path to store images inside the output directory.
 
     """
     if isinstance(elem, panflute.CodeBlock) and "mermaid" in elem.classes:
@@ -271,9 +284,15 @@ def export_mermaid_blocks(elem, doc, output, scale, extension):
         with open("input.mmd", "w+") as tmp:
             tmp.write(output_text)
 
-        # Updated to use the extension variable
+        # Determine output paths
         output_name = f"{image_name}.{extension}"
-        output_path = os.path.join(output, output_name)
+        
+        # 1. Physical location to save the file
+        full_img_dir = os.path.join(output, imgdir)
+        if not os.path.exists(full_img_dir):
+            os.makedirs(full_img_dir)
+        
+        output_path = os.path.join(full_img_dir, output_name)
 
         puppeteer = ""
         if os.path.isfile("/usr/bin/chromium-browser"):
@@ -285,7 +304,18 @@ def export_mermaid_blocks(elem, doc, output, scale, extension):
         mermaid_output = subprocess.check_output(command, shell=True, timeout=180)
         logger.info(mermaid_output)
         os.remove("input.mmd")
-        doc.mermaid[elem.index] = output_name
+        
+        # 2. Relative location for the markdown link
+        # If imgdir is ".", use just the filename, otherwise join them
+        if imgdir == ".":
+            relative_link = output_name
+        else:
+            relative_link = os.path.join(imgdir, output_name)
+        
+        # Ensure forward slashes for markdown compatibility even on Windows
+        relative_link = relative_link.replace("\\", "/")
+
+        doc.mermaid[elem.index] = relative_link
 
 
 def replace_mermaid_blocks_with_images(doc):
@@ -318,7 +348,7 @@ def save_new_file(doc, new_file_name):
         contents = temp_file.getvalue()
 
     try:
-        pypandoc.convert_text(contents, "markdown_github", "json", outputfile=new_file_name)
+        pypandoc.convert_text(contents, "markdown_github", "json", outputfile=new_file_name, extra_args=["--wrap=none"])
     except OSError as e:
         logger.error(f"Failed to save file, check permissions. {e}.")
         sys.exit(1)
